@@ -5,3 +5,4 @@ authors = ["Tristan MacCrehan <thinkyfish@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+#glr-parser = { git = "https://github.com/thinkyfish/glr-parser-rs.git"}

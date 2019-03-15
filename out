@@ -1,0 +1,45 @@
+   Compiling third v0.1.0 (/home/tristan/work/third)
+warning: unused variable: `a_arity`
+   --> src/main.rs:224:13
+    |
+224 |     let (a, a_arity) = dstack.pop_data().expect("action_add: a not found");
+    |             ^^^^^^^ help: consider using `_a_arity` instead
+    |
+    = note: #[warn(unused_variables)] on by default
+
+warning: unused variable: `b_arity`
+   --> src/main.rs:225:13
+    |
+225 |     let (b, b_arity) = dstack.pop_data().unwrap();
+    |             ^^^^^^^ help: consider using `_b_arity` instead
+
+warning: unused variable: `w`
+   --> src/main.rs:223:15
+    |
+223 | fn action_add(w: Word,dstack: &mut DataStack) -> () {
+    |               ^ help: consider using `_w` instead
+
+warning: unused variable: `w`
+   --> src/main.rs:238:19
+    |
+238 | fn action_arity_0(w: Word, dstack: &mut DataStack) -> () {
+    |                   ^ help: consider using `_w` instead
+
+warning: unused variable: `dstack`
+   --> src/main.rs:238:28
+    |
+238 | fn action_arity_0(w: Word, dstack: &mut DataStack) -> () {
+    |                            ^^^^^^ help: consider using `_dstack` instead
+
+error[E0507]: cannot move out of borrowed content
+   --> src/main.rs:280:55
+    |
+280 |                                         (word.action)(*word,&mut dstack);
+    |                                                       ^^^^^ cannot move out of borrowed content
+
+error: aborting due to previous error
+
+For more information about this error, try `rustc --explain E0507`.
+error: Could not compile `third`.
+
+To learn more, run the command again with --verbose.
