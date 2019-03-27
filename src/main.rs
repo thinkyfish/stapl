@@ -86,8 +86,12 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
 }
 
 fn lex_parameter<T: Iterator<Item = char>>(inc: char, iter: &mut Peekable<T>) -> i64 {
-    let Some(Ok(digit)) = iter.peek().map(|c| c.to_string().parse::<i64>());
-    return digit;
+    let mut number = 0;
+    while let Some(Ok(digit)) = iter.peek().map(|c| c.to_string().parse::<i64>()) {
+        number = number * 10 + digit;
+        iter.next();
+    }
+    return number;
 }
 
 fn lex_number<T: Iterator<Item = char>>(inc: char, iter: &mut Peekable<T>) -> i64 {
@@ -141,8 +145,11 @@ fn print_lexeme(token: &LexItem) -> String {
         LexItem::Stack(s) => {
             value = "[stack]".to_string();
         }
-        LexItem::Lambda => {
+        LexItem::Lambda(l) => {
             value = "[Lambda]".to_string();
+        }
+        LexItem::Parameter(p) => {
+            value = format!("${}", p);
         }
     }
     return format!("{} ", value);
