@@ -9,7 +9,11 @@ enum LexItem {
     OpenParen,
     CloseParen,
     Num(i64),
+    Parameter(i64),
+    Stack(Vec<LexItem>),
+    Lambda(Vec<LexItem>),
 }
+
 impl LexItem {
     fn get_Num(self: &Self) -> Option<i64> {
         match self {
@@ -50,6 +54,11 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
             let a = lex_word(c, &mut it);
             return Some(LexItem::Word(a));
         }
+        '$' => {
+            it.next();
+            let p = lex_parameter(c, &mut it);
+            return Some(LexItem::Parameter(p));
+        }
         // '+' | '*' => {
         //     result.push(LexItem::Op(c));
         //     it.next();
@@ -74,6 +83,11 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
             return None;
         }
     }
+}
+
+fn lex_parameter<T: Iterator<Item = char>>(inc: char, iter: &mut Peekable<T>) -> i64 {
+    let Some(Ok(digit)) = iter.peek().map(|c| c.to_string().parse::<i64>());
+    return digit;
 }
 
 fn lex_number<T: Iterator<Item = char>>(inc: char, iter: &mut Peekable<T>) -> i64 {
@@ -124,6 +138,12 @@ fn print_lexeme(token: &LexItem) -> String {
         LexItem::CloseParen => {
             value = ")".to_string();
         } //LexItem::WhiteSpace => {descriptor = "WhiteSpace"; value = " ".to_string();}
+        LexItem::Stack(s) => {
+            value = "[stack]".to_string();
+        }
+        LexItem::Lambda => {
+            value = "[Lambda]".to_string();
+        }
     }
     return format!("{} ", value);
 }
@@ -145,6 +165,7 @@ enum Expectation {
     Num,
     Literal,
     Stack,
+    Any,
 }
 
 fn check_expectation(e: Expectation, l: LexItem) -> Option<LexItem> {
@@ -153,8 +174,12 @@ fn check_expectation(e: Expectation, l: LexItem) -> Option<LexItem> {
             LexItem::Num(n) => {
                 return Some(l);
             }
+
             _ => (),
         },
+        Expectation::Any => {
+            return Some(l);
+        }
         _ => (),
     }
     return None;
@@ -265,6 +290,18 @@ struct Word {
     expectations: Vec<Expectation>,
 }
 
+fn make_word(name: String, arity: u8, substitution: Option<Vec<LexItem>>) -> Word {
+    let word = Word {
+        name: name,
+        arity: arity,
+        expectations: Vec::new(),
+        action: action_add,
+        substitution: substitution,
+    };
+
+    return word;
+}
+
 fn action_add(call: &mut Call) -> () {
     println!("action_add arguments {:?}", call.arguments);
     let a = call.arguments.pop().unwrap().get_Num().unwrap();
@@ -272,7 +309,29 @@ fn action_add(call: &mut Call) -> () {
     call.results.push(LexItem::Num(a + b));
     println!("action_add {} + {}", a, b);
 }
-
+fn check_conditional(l: LexItem) -> bool {
+    match l {
+        LexItem::Num(n) => {
+            if n == 0 {
+                return false;
+            } else {
+                return true;
+            }
+        }
+        _ => return false,
+    }
+}
+fn action_if(call: &mut Call) -> () {
+    println!("action_if arguments {:?}", call.arguments);
+    let else_clause = call.arguments.pop().unwrap();
+    let if_clause = call.arguments.pop().unwrap();
+    let conditional = call.arguments.pop().unwrap();
+    if check_conditional(conditional) {
+        call.results.push(if_clause);
+    } else {
+        call.results.push(else_clause);
+    }
+}
 fn make_call(word: &Word) -> Call {
     let a = Call {
         name: "+".to_string(),
@@ -293,28 +352,40 @@ fn main() {
 
     //add '+' builtin
     let string1 = String::from("+");
-    let testword = Word {
+    let addword = Word {
         name: "+".to_string(),
         arity: 2,
         action: action_add,
         substitution: None,
         expectations: vec![Expectation::Num, Expectation::Num],
     };
-    words.insert(string1, testword);
+    words.insert(string1, addword);
+
+    let string2 = String::from("if");
+    let ifword = Word {
+        name: "if".to_string(),
+        arity: 3,
+        action: action_if,
+        substitution: None,
+        expectations: vec![Expectation::Num, Expectation::Any, Expectation::Any],
+    };
+    words.insert(string2, ifword);
 
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {
         println!("The first argument is {}", args[1]);
+
+        //lex all of the input
         let mut it = (&args[1]).chars().peekable();
         while it.peek() != None {
             match next_lexeme(&mut it) {
                 Some(lexeme) => {
                     istack.insert(0, lexeme);
-                    println!("istack: {:?}", istack);
                 }
                 _ => (),
             }
         }
+
         println!("istack: {:?}", istack);
         while istack.len() > 0 || cstack.len() > 0 {
             println!("istack: {:?}", istack);
