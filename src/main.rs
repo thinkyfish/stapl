@@ -166,12 +166,11 @@ fn parse_stacks<'i>(
                 let mut newstack = &mut Vec::new();
                 newstack = parse_stacks(lex_input, newstack);
                 parsed_input.insert(0, LexItem::Stack(newstack.to_vec()));
-                return parsed_input;
             }
             LexItem::CloseParen => {
                 println!("closedbracket found");
-                let p = parse_stacks(lex_input, parsed_input);
-                return p;
+
+                return parsed_input;
             }
             _ => {
                 println!("lexeme found: {}", print_lexeme(&itop));
@@ -320,7 +319,7 @@ impl CallStack {
         self.words.insert("define".to_string(), defword);
     }
 
-    fn pushLexItem(self: &mut Self, lexeme: LexItem) -> bool {
+    fn pushLexItem(self: &mut Self, lexeme: &mut LexItem) -> bool {
         let top_call: &mut Call;
         match self.stack.last_mut() {
             Some(call) => {
@@ -333,11 +332,11 @@ impl CallStack {
         let e = &mut top_call.expectations;
         match e.last() {
             Some(&top_expectation) => {
-                let d = check_expectation(top_expectation, lexeme);
+                let d = check_expectation(top_expectation, lexeme.clone());
                 match d {
                     Some(dataitem) => {
                         e.pop();
-                        top_call.arguments.insert(0, (dataitem));
+                        top_call.arguments.insert(0, dataitem);
 
                         //could put apply here
                     }
@@ -541,7 +540,7 @@ fn main() {
                 }
 
                 LexItem::Num(n) => {
-                    if cstack.pushLexItem(LexItem::Num(n)) {
+                    if cstack.pushLexItem(&mut LexItem::Num(n)) {
                         println!("pushed item: {}", print_lexeme(&LexItem::Num(n)));
                     } else {
                         println!("output item: {}", print_lexeme(&LexItem::Num(n)));
@@ -549,9 +548,12 @@ fn main() {
                     }
                 }
                 LexItem::Stack(mut s) => {
-                    let ms = &mut s;
-                    //ms.reverse();
-                    istack.append(ms);
+                    if cstack.pushLexItem(&mut LexItem::Stack(s)) {
+                        println!("pushed stack: ");
+                    } else {
+                        //ms.reverse();
+                        //istack.append(&mut s);
+                    }
                 }
                 _ => (),
             }
