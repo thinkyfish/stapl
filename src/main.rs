@@ -71,11 +71,11 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
             it.next();
             return None;
         }
-        '(' => {
+        '[' => {
             it.next();
             return Some(LexItem::OpenParen);
         }
-        ')' => {
+        ']' => {
             it.next();
             return Some(LexItem::CloseParen);
         }
@@ -137,10 +137,10 @@ fn print_lexeme(token: &LexItem) -> String {
             value = n.to_string();
         }
         LexItem::OpenParen => {
-            value = "(".to_string();
+            value = "[".to_string();
         }
         LexItem::CloseParen => {
-            value = ")".to_string();
+            value = "]".to_string();
         } //LexItem::WhiteSpace => {descriptor = "WhiteSpace"; value = " ".to_string();}
         LexItem::Stack(s) => {
             value = "[stack]".to_string();
@@ -155,6 +155,35 @@ fn print_lexeme(token: &LexItem) -> String {
     return format!("{} ", value);
 }
 
+fn parse_stacks<'i>(
+    lex_input: &mut Vec<LexItem>,
+    parsed_input: &'i mut Vec<LexItem>,
+) -> &'i mut Vec<LexItem> {
+    while let Some(itop) = lex_input.pop() {
+        match itop {
+            LexItem::OpenParen => {
+                println!("openbracket found");
+                let mut newstack = &mut Vec::new();
+                newstack = parse_stacks(lex_input, newstack);
+                parsed_input.insert(0, LexItem::Stack(newstack.to_vec()));
+                return parsed_input;
+            }
+            LexItem::CloseParen => {
+                println!("closedbracket found");
+                let p = parse_stacks(lex_input, parsed_input);
+                return p;
+            }
+            _ => {
+                println!("lexeme found: {}", print_lexeme(&itop));
+                parsed_input.insert(0, itop);
+                let p = parse_stacks(lex_input, parsed_input);
+                return p;
+            }
+        }
+    }
+    return parsed_input;
+}
+
 fn matching(c: char) -> char {
     match c {
         ')' => '(',
@@ -167,13 +196,27 @@ fn matching(c: char) -> char {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum Expectation {
     Num,
     Literal,
     Stack,
     Any,
+    Word,
 }
+/* impl fmt::Debug for Expectation{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let output;
+        match self {
+            Num => {output = "Num";},
+            Literal => { output = "Literal"; },
+            Stack => { output = "Stack"
+
+
+        }
+        write!(f, "{{{}, a:{:?}}}", self.name, self.arguments)
+    }
+} */
 
 fn check_expectation(e: Expectation, l: LexItem) -> Option<LexItem> {
     match e {
@@ -194,7 +237,7 @@ fn check_expectation(e: Expectation, l: LexItem) -> Option<LexItem> {
 
 struct Call {
     name: String,
-    action: fn(call: &mut Call) -> (),
+    //action: fn(call: &mut Call) -> (),
     arity: u8,
     arguments: Vec<LexItem>,
     expectations: Vec<Expectation>,
@@ -207,11 +250,27 @@ impl fmt::Debug for Call {
 }
 struct CallStack {
     stack: Vec<Call>,
+    words: HashMap<String, Word>,
 }
 impl CallStack {
-    fn pushWordCall(self: &mut Self, word: &Word) -> () {
-        self.stack.push(make_call(word));
-        println!("pushed Call: {}, Stack: {:?}", word.name, self.stack);
+    fn pushWordCall(self: &mut Self, word: String) -> () {
+        match self.words.get(&word) {
+            Some(w) => {
+                self.stack.push(make_call(w));
+                println!("pushed Call: {}, Stack: {:?}", w.name, self.stack);
+            }
+            None => {
+                let defword = self.words.get(&"define".to_string()).unwrap();
+
+                let mut c = make_call(defword);
+                c.expectations.pop();
+                c.arguments.push(LexItem::Word(word.to_string()));
+
+                self.stack.push(c);
+
+                println!("pushed Define {}, Stack: {:?}", word, self.stack);
+            }
+        }
     }
     fn len(self: &Self) -> usize {
         return self.stack.len();
@@ -228,6 +287,36 @@ impl CallStack {
         };
 
         return top_call.expectations.last();
+    }
+    fn create_builtin_words(self: &mut Self) -> () {
+        let string1 = String::from("+");
+        let addword = Word {
+            name: "+".to_string(),
+            arity: 2,
+            //action: action_add,
+            substitution: None,
+            expectations: vec![Expectation::Num, Expectation::Num],
+        };
+        self.words.insert(string1, addword);
+
+        let string2 = String::from("if");
+        let ifword = Word {
+            name: "if".to_string(),
+            arity: 3,
+            //action: action_if,
+            substitution: None,
+            expectations: vec![Expectation::Num, Expectation::Any, Expectation::Any],
+        };
+        self.words.insert(string2, ifword);
+
+        let defword = Word {
+            name: "define".to_string(),
+            arity: 1,
+            //action: CallStack::action_define(self), // change this to an option?
+            substitution: None,
+            expectations: vec![Expectation::Any, Expectation::Word],
+        };
+        self.words.insert("define".to_string(), defword);
     }
 
     fn pushLexItem(self: &mut Self, lexeme: LexItem) -> bool {
@@ -247,7 +336,8 @@ impl CallStack {
                 match d {
                     Some(dataitem) => {
                         e.pop();
-                        top_call.arguments.push(dataitem);
+                        top_call.arguments.insert(0, (dataitem));
+
                         //could put apply here
                     }
                     _ => (),
@@ -255,6 +345,7 @@ impl CallStack {
             }
             _ => (),
         }
+
         println!(
             "pushed item: {}, Stack: {:?}",
             print_lexeme(top_call.arguments.last().unwrap()),
@@ -266,7 +357,11 @@ impl CallStack {
     fn wantsData(self: &Self) -> bool {
         match self.stack.last() {
             Some(call) => {
-                println!("wants data: {}", call.expectations.len());
+                println!(
+                    "wants data: {:?}, {} more",
+                    call.expectations.last(),
+                    call.expectations.len()
+                );
                 return call.expectations.len() > 0;
             }
             None => {
@@ -277,7 +372,20 @@ impl CallStack {
     fn top_apply(self: &mut Self, result: &mut Vec<LexItem>) -> bool {
         match self.stack.last_mut() {
             Some(top_call) => {
-                (top_call.action)(top_call);
+                match top_call.name.as_str() {
+                    "+" => {
+                        action_add(top_call);
+                    }
+                    "if" => {
+                        action_if(top_call);
+                    }
+                    "define" => {
+                        action_define(&mut self.words, top_call);
+                    }
+                    _ => {
+                        action_substitution(top_call);
+                    }
+                }
                 result.append(&mut top_call.results);
                 self.stack.pop();
                 return true;
@@ -292,23 +400,45 @@ impl CallStack {
 struct Word {
     name: String,
     arity: u8,
-    action: fn(call: &mut Call) -> (),
-    substitution: Option<Vec<LexItem>>,
+    //action: fn(call: &mut Call) -> (),
+    substitution: Option<LexItem>,
     expectations: Vec<Expectation>,
 }
 
-fn make_word(name: String, arity: u8, substitution: Option<Vec<LexItem>>) -> Word {
+fn make_word(
+    name: String,
+    arity: u8,
+    //  action: fn(call: &mut Call) -> (),
+    substitution: Option<LexItem>,
+) -> Word {
     let word = Word {
         name: name,
         arity: arity,
         expectations: Vec::new(),
-        action: action_add,
+        // action: action_add,
         substitution: substitution,
     };
 
     return word;
 }
+fn action_define(words: &mut HashMap<String, Word>, call: &mut Call) -> () {
+    println!(
+        "define word \"{}\" argument {:?}",
+        call.name, call.arguments
+    );
+    let first = call.arguments.pop().unwrap();
+    match first {
+        LexItem::Word(w) => {
+            let value = call.arguments.pop().unwrap();
+            words.insert(w.to_string(), make_word(w.to_string(), 0, Some(value)));
+        }
+        _ => {
+            println!("expected word");
+        }
+    }
 
+    return ();
+}
 fn action_add(call: &mut Call) -> () {
     println!("action_add arguments {:?}", call.arguments);
     let a = call.arguments.pop().unwrap().get_Num().unwrap();
@@ -339,10 +469,16 @@ fn action_if(call: &mut Call) -> () {
         call.results.push(else_clause);
     }
 }
+
+fn action_substitution(call: &mut Call) -> () {
+    //fixme write this function.
+    println!("substitution");
+    return ();
+}
 fn make_call(word: &Word) -> Call {
     let a = Call {
-        name: "+".to_string(),
-        action: word.action,
+        name: word.name.to_string(),
+        //action: word.action,
         arity: word.arity,
         arguments: Vec::new(),
         expectations: word.expectations.to_vec(),
@@ -352,31 +488,15 @@ fn make_call(word: &Word) -> Call {
 }
 
 fn main() {
-    let mut words: HashMap<String, Word> = HashMap::new();
-    let cstack = &mut CallStack { stack: Vec::new() };
-    let istack: &mut Vec<LexItem> = &mut Vec::new();
+    let cstack = &mut CallStack {
+        stack: Vec::new(),
+        words: HashMap::new(),
+    };
+    cstack.create_builtin_words();
+    let mut istack: &mut Vec<LexItem> = &mut Vec::new();
     let ostack: &mut Vec<LexItem> = &mut Vec::new();
-
+    let lexstack: &mut Vec<LexItem> = &mut Vec::new();
     //add '+' builtin
-    let string1 = String::from("+");
-    let addword = Word {
-        name: "+".to_string(),
-        arity: 2,
-        action: action_add,
-        substitution: None,
-        expectations: vec![Expectation::Num, Expectation::Num],
-    };
-    words.insert(string1, addword);
-
-    let string2 = String::from("if");
-    let ifword = Word {
-        name: "if".to_string(),
-        arity: 3,
-        action: action_if,
-        substitution: None,
-        expectations: vec![Expectation::Num, Expectation::Any, Expectation::Any],
-    };
-    words.insert(string2, ifword);
 
     let args: Vec<_> = env::args().collect();
     if args.len() > 1 {
@@ -387,14 +507,15 @@ fn main() {
         while it.peek() != None {
             match next_lexeme(&mut it) {
                 Some(lexeme) => {
-                    istack.insert(0, lexeme);
+                    lexstack.insert(0, lexeme);
                 }
                 _ => (),
             }
         }
-
+        println!("lexstack: {:?}", lexstack);
+        istack = parse_stacks(lexstack, istack);
         println!("istack: {:?}", istack);
-        while istack.len() > 0 || cstack.len() > 0 {
+        loop {
             println!("istack: {:?}", istack);
             while !cstack.wantsData() {
                 if cstack.len() > 0 {
@@ -403,29 +524,59 @@ fn main() {
                     break;
                 };
             }
-
+            println!("istack: {:?}", istack);
+            if istack.len() == 0 {
+                break;
+            }
             match istack.pop().unwrap() {
-                LexItem::Word(w) => match words.get(&w) {
-                    Some(word) => {
-                        cstack.pushWordCall(word);
-                    }
-                    _ => {
-                        ostack.push(LexItem::Word(w));
-                        println!("{},{}", "Word", ostack.last().unwrap().get_Word().unwrap());
-                    }
-                },
+                LexItem::Word(w) => {
+                    cstack.pushWordCall(w);
+                }
+               /* _ => {
+                     let newword = make_word(w.to_string(), 0, action_substitution, None);
+                        words.insert(w.to_string(), newword);
+                        //let defcall = make_call(& defword);
+                        cstack.pushWordCall(&defword);
+                        cstack.pushLexItem(LexItem::Word(w.to_string()));
+                        match cstack.stack.last_mut() {
+                            Some(top_call) => {
+                                let first = top_call.arguments.pop().unwrap();
+                                match first {
+                                    LexItem::Word(w) => {
+                                        let value = top_call.arguments.pop().unwrap();
+                                        words.insert(
+                                            w.to_string(),
+                                            make_word(
+                                                w.to_string(),
+                                                0,
+                                                action_substitution,
+                                                Some(value),
+                                            ),
+                                        );
+                                    }
+                                    _ => {
+                                        println!("expected word");
+                                    }
+                                }
+                                cstack.stack.pop();
+                            }
+                            None => (),
+                        }
+                        println!("defined word {}", w.to_string());
+                    }*/
+                //}
                 LexItem::Num(n) => {
                     if cstack.pushLexItem(LexItem::Num(n)) {
                         println!("pushed item: {}", print_lexeme(&LexItem::Num(n)));
                     } else {
+                        println!("output item: {}", print_lexeme(&LexItem::Num(n)));
                         ostack.push(LexItem::Num(n));
                     }
                 }
-                LexItem::OpenParen => {
-                    println!("{},{}", "OpenParen", "(");
-                }
-                LexItem::CloseParen => {
-                    println!("{},{}", "CloseParen", ")");
+                LexItem::Stack(mut s) => {
+                    let ms = &mut s;
+                    //ms.reverse();
+                    istack.append(ms);
                 }
                 _ => (),
             }
