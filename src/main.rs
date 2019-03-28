@@ -242,6 +242,7 @@ struct Call {
     arguments: Vec<LexItem>,
     expectations: Vec<Expectation>,
     results: Vec<LexItem>,
+    substitution: Option<LexItem>,
 }
 impl fmt::Debug for Call {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -305,7 +306,7 @@ impl CallStack {
             arity: 3,
             //action: action_if,
             substitution: None,
-            expectations: vec![Expectation::Num, Expectation::Any, Expectation::Any],
+            expectations: vec![Expectation::Any, Expectation::Any, Expectation::Num],
         };
         self.words.insert(string2, ifword);
 
@@ -471,11 +472,16 @@ fn action_if(call: &mut Call) -> () {
 }
 
 fn action_substitution(call: &mut Call) -> () {
-    //fixme write this function.
-    println!("substitution");
+    let sub = call.substitution.take();
+    if sub.is_none() {
+        return ();
+    }
+    call.results = vec![sub.unwrap()];
+    println!("sub: {:?}", call.results);
     return ();
 }
 fn make_call(word: &Word) -> Call {
+    let sub = word.substitution.clone();
     let a = Call {
         name: word.name.to_string(),
         //action: word.action,
@@ -483,6 +489,7 @@ fn make_call(word: &Word) -> Call {
         arguments: Vec::new(),
         expectations: word.expectations.to_vec(),
         results: Vec::new(),
+        substitution: sub,
     };
     return a;
 }
@@ -532,39 +539,7 @@ fn main() {
                 LexItem::Word(w) => {
                     cstack.pushWordCall(w);
                 }
-               /* _ => {
-                     let newword = make_word(w.to_string(), 0, action_substitution, None);
-                        words.insert(w.to_string(), newword);
-                        //let defcall = make_call(& defword);
-                        cstack.pushWordCall(&defword);
-                        cstack.pushLexItem(LexItem::Word(w.to_string()));
-                        match cstack.stack.last_mut() {
-                            Some(top_call) => {
-                                let first = top_call.arguments.pop().unwrap();
-                                match first {
-                                    LexItem::Word(w) => {
-                                        let value = top_call.arguments.pop().unwrap();
-                                        words.insert(
-                                            w.to_string(),
-                                            make_word(
-                                                w.to_string(),
-                                                0,
-                                                action_substitution,
-                                                Some(value),
-                                            ),
-                                        );
-                                    }
-                                    _ => {
-                                        println!("expected word");
-                                    }
-                                }
-                                cstack.stack.pop();
-                            }
-                            None => (),
-                        }
-                        println!("defined word {}", w.to_string());
-                    }*/
-                //}
+
                 LexItem::Num(n) => {
                     if cstack.pushLexItem(LexItem::Num(n)) {
                         println!("pushed item: {}", print_lexeme(&LexItem::Num(n)));
