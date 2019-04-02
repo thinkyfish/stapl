@@ -195,14 +195,6 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
             it.next();
             return Some(LexItem::Word("#".to_string()));
         }
-        // '+' | '*' => {
-        //     result.push(LexItem::Op(c));
-        //     it.next();
-        // }
-        // '(' | ')' | '[' | ']' | '{' | '}' => {
-        //     result.push(LexItem::Paren(c));
-        //     it.next();
-        // }
         ' ' | '\n' | '\t' => {
             it.next();
             return None;
@@ -331,14 +323,7 @@ fn parse_stacks<'i>(
                 quoted = true;
                 println!("Parse: found quote");
             }
-            /*             LexItem::Parameter(p) => {
-                //println!("lexeme found: {}", print_lexeme(&itop));
-                parsed_input.insert(0, LexItem::Parameter(p));
-                parsed_input.insert(0, LexItem::Word("$".to_string()));
-                let p = parse_stacks(lex_input, parsed_input);
-                return p;
 
-            } */
             LexItem::Num(n) => {
                 let mut lexeme = LexItem::Num(n);
                 if quoted {
