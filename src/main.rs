@@ -59,6 +59,19 @@ fn format_parstack(stack: &Vec<Parameter>) -> String {
     }
     return result;
 }
+
+#[derive(Debug, Copy, Clone)]
+enum Expectation {
+    Num,
+    Literal,
+    Stack,
+    Lambda,
+    Any,
+    Word,
+    Parameter,
+    NumStaLit,
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 enum LexItem {
     Word(String),
@@ -351,18 +364,6 @@ fn parse_stacks<'i>(
     return parsed_input;
 }
 
-#[derive(Debug, Copy, Clone)]
-enum Expectation {
-    Num,
-    Literal,
-    Stack,
-    Lambda,
-    Any,
-    Word,
-    Parameter,
-    NumStaLit,
-}
-
 #[derive(Debug, Clone)]
 struct Parameter {
     name: String,
@@ -486,6 +487,15 @@ impl CallStack {
             expectations: vec![Expectation::Stack, Expectation::Num],
         };
         self.words.insert("#".to_string(), defextract);
+
+        let deftake = Word {
+            name: "take".to_string(),
+            arity: 1,
+            action: action_take,
+            substitution: None,
+            expectations: vec![Expectation::Num],
+        };
+        self.words.insert("take".to_string(), deftake);
     }
 
     fn pushLexItem<'l>(self: &mut Self, lexeme: &'l mut LexItem) -> Option<&'l mut LexItem> {
@@ -586,6 +596,18 @@ impl CallStack {
                             }
                         }
                     }
+                    "take" => {
+                        println!("top_apply in take");
+                        let new_arity = top_call.arguments.pop().unwrap().value;
+                        top_call.arity = new_arity.get_Num().unwrap() as usize;
+                        top_call.expectations.pop();
+                        for i in 0..top_call.arity {
+                            top_call.expectations.push(Expectation::NumStaLit);
+                        }
+                        top_call.name = "take_ready".to_string();
+                        println!("reset take arity");
+                        return true;
+                    }
 
                     _ => {
                         (top_call.action)(top_call);
@@ -595,6 +617,7 @@ impl CallStack {
                 result.append(&mut top_call.results);
                 //result.insert(0, LexItem::Stack(top_call.results.clone()));
                 println!("call result {}", format_lexstack(result));
+
                 self.stack.pop();
                 return true;
             }
@@ -661,7 +684,14 @@ impl Word {
 fn action_none(call: &mut Call) -> () {
     return ();
 }
+fn action_take(call: &mut Call) -> () {
+    let mut newstack = Vec::new();
+    for a in 0..call.arguments.len() {
+        newstack.insert(0, call.arguments.pop().unwrap().value);
+    }
 
+    call.results.push(LexItem::Stack(newstack.to_owned()));
+}
 fn action_extract(call: &mut Call) {
     let index = call.arguments.pop().unwrap().value.get_Num().unwrap() as i64;
     let s = call.arguments.pop().unwrap().value;
@@ -835,6 +865,8 @@ fn eval<'o>(input: String, ostack: &'o mut Vec<LexItem>) -> &'o mut Vec<LexItem>
                 _ => (),
             }
         }
+        println!("cstack: {:?}", cstack.stack);
+
         println!("lexstack: {}", format_lexstack(lexstack));
         istack = parse_stacks(lexstack, istack);
         println!("istack: {:?}", format_lexstack(istack));
