@@ -94,16 +94,6 @@ impl LexItem {
             }
         }
     }
-    /*     fn get_stack(self: &Self) -> Option<Vec<LexItem>> {
-        match self {
-            LexItem::Stack(s) => {
-                return Some(s);
-            }s
-            _ => {
-                return None;
-            }
-        }
-    } */
     fn get_arity(self: &Self) -> usize {
         let mut arity = 0;
         match self {
