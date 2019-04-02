@@ -156,7 +156,7 @@ impl LexItem {
 
         if let Some(parameters) = self.get_parameters() {
             for s in parameters {
-                exp.push(Expectation::Any);
+                exp.push(Expectation::Num);
             }
         }
         return exp;
@@ -794,7 +794,7 @@ fn parameter_reduce<'a>(a: &'a Parameter, l: &'a LexItem) -> Option<&'a LexItem>
             }
         }
         LexItem::Stack(s) => {
-            return Some(l);
+            return None;
         }
         _ => {
             return None;
@@ -820,11 +820,11 @@ fn action_substitution(call: &mut Call) -> () {
                     for mut value in current {
                         for a in call.arguments.iter() {
                             if let Some(p) = parameter_reduce(a, &value) {
-                                if let LexItem::Stack(s) = p {
-                                    curstack.push(s.to_vec());
-                                } else {
-                                    value = p.clone();
-                                }
+                                //if let LexItem::Stack(s) = p {
+                                // curstack.push(s.to_vec());
+                                //} else {
+                                value = p.clone();
+                                //}
                             }
                         }
                         betasub.push(value);
@@ -892,7 +892,7 @@ fn eval<'o>(input: String, ostack: &'o mut Vec<LexItem>) -> &'o mut Vec<LexItem>
         println!("istack: {:?}", format_lexstack(istack));
         loop {
             loopcount = loopcount + 1;
-            if loopcount > 20 {
+            if loopcount > 100 {
                 println!("exceeded maximum loops");
                 break;
             };
