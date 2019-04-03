@@ -864,19 +864,106 @@ struct Program {
     filename: String,
     istack: Vec<LexItem>,
     cstack: CallStack,
+    ostack: Vec<LexItem>,
 }
 
-fn eval<'o>(input: String, ostack: &'o mut Vec<LexItem>) -> &'o mut Vec<LexItem> {
-    let cstack = &mut CallStack {
-        stack: Vec::new(),
-        words: HashMap::new(),
-    };
-    cstack.create_builtin_words();
-    let mut istack: &mut Vec<LexItem> = &mut Vec::new();
-
-    let lexstack: &mut Vec<LexItem> = &mut Vec::new();
+fn eval<'o>(program: &'o mut Program) -> &'o mut Program {
+    let mut istack = &mut program.istack;
+    let mut cstack = &mut program.cstack;
+    let mut ostack = &mut program.ostack;
     //add '+' builtin
     let mut loopcount = 0;
+    println!("cstack: {:?}", cstack.stack);
+
+    println!("istack: {:?}", format_lexstack(&istack));
+    loop {
+        loopcount = loopcount + 1;
+        if loopcount > 100 {
+            println!("exceeded maximum loops");
+            break;
+        };
+        while !cstack.wantsData() {
+            if cstack.len() > 0 {
+                let result = cstack.top_apply(&mut istack);
+                println!("istack: {}", format_lexstack(&istack));
+            } else {
+                break;
+            };
+        }
+        println!("cstack: {:?}", cstack.stack);
+        println!("istack: {:?}", format_lexstack(&istack));
+        if istack.len() == 0 {
+            break;
+        }
+        match istack.pop().unwrap() {
+            LexItem::Word(w) => {
+                let mut pw = &mut LexItem::Word(w);
+                let lexreturn = cstack.pushLexItem(&mut pw);
+                match lexreturn {
+                    Some(LexItem::Word(w)) => {
+                        cstack.pushSearchWord(w.to_string());
+                    }
+                    _ => {}
+                }
+            }
+
+            LexItem::Num(n) => {
+                if cstack.pushLexItem(&mut LexItem::Num(n)).is_none() {
+                    println!("pushed expected item: {}", print_lexeme(&LexItem::Num(n)));
+                } else {
+                    let c = cstack.stack.last_mut();
+                    if let Some(top_call) = c {
+                        top_call.results.push(LexItem::Num(n));
+                    } else {
+                        println!("output item: {}", print_lexeme(&LexItem::Num(n)));
+                        ostack.push(LexItem::Num(n));
+                    }
+                }
+            }
+            LexItem::Lambda(mut s) => {
+                let stack = &mut LexItem::Lambda(s);
+                let lexreturn = cstack.pushLexItem(stack);
+                match lexreturn {
+                    Some(l) => {
+                        let arity = l.get_arity();
+                        let mut w = Word::make_word(
+                            "lambda".to_string(),
+                            arity,
+                            action_substitution,
+                            Some(l.clone()),
+                        );
+                        w.setup_expectations();
+                        cstack.pushWordCall(&mut w);
+                        //istack.append(l);
+                    }
+                    _ => {}
+                }
+            }
+            LexItem::Stack(mut s) => {
+                if let Some(l) = cstack.pushLexItem(&mut LexItem::Stack(s)) {
+                    //println!("output item: {}", format_lexstack(&s));
+                    ostack.push(l.clone());
+                }
+            }
+            LexItem::Parameter(p) => {
+                let c = cstack.stack.last_mut();
+                if let Some(top_call) = c {
+                    match action_parameter(top_call) {
+                        Some(lexeme) => {
+                            istack.push(lexeme);
+                        }
+                        None => (),
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+
+    println!("cstack: {:?}", cstack.stack);
+    return program;
+}
+fn parse_input<'i>(input: String, lexstack: &'i mut Vec<LexItem>) -> &'i mut Vec<LexItem> {
     if input.len() > 1 {
         println!("The first argument is {}", input);
 
@@ -890,97 +977,8 @@ fn eval<'o>(input: String, ostack: &'o mut Vec<LexItem>) -> &'o mut Vec<LexItem>
                 _ => (),
             }
         }
-        println!("cstack: {:?}", cstack.stack);
-
-        println!("lexstack: {}", format_lexstack(lexstack));
-        istack = parse_stacks(lexstack, istack);
-        println!("istack: {:?}", format_lexstack(istack));
-        loop {
-            loopcount = loopcount + 1;
-            if loopcount > 100 {
-                println!("exceeded maximum loops");
-                break;
-            };
-            while !cstack.wantsData() {
-                if cstack.len() > 0 {
-                    let result = cstack.top_apply(istack);
-                    println!("istack: {}", format_lexstack(istack));
-                } else {
-                    break;
-                };
-            }
-            println!("cstack: {:?}", cstack.stack);
-            println!("istack: {:?}", format_lexstack(istack));
-            if istack.len() == 0 {
-                break;
-            }
-            match istack.pop().unwrap() {
-                LexItem::Word(w) => {
-                    let mut pw = &mut LexItem::Word(w);
-                    let lexreturn = cstack.pushLexItem(&mut pw);
-                    match lexreturn {
-                        Some(LexItem::Word(w)) => {
-                            cstack.pushSearchWord(w.to_string());
-                        }
-                        _ => {}
-                    }
-                }
-
-                LexItem::Num(n) => {
-                    if cstack.pushLexItem(&mut LexItem::Num(n)).is_none() {
-                        println!("pushed expected item: {}", print_lexeme(&LexItem::Num(n)));
-                    } else {
-                        let c = cstack.stack.last_mut();
-                        if let Some(top_call) = c {
-                            top_call.results.push(LexItem::Num(n));
-                        } else {
-                            println!("output item: {}", print_lexeme(&LexItem::Num(n)));
-                            ostack.push(LexItem::Num(n));
-                        }
-                    }
-                }
-                LexItem::Lambda(mut s) => {
-                    let stack = &mut LexItem::Lambda(s);
-                    let lexreturn = cstack.pushLexItem(stack);
-                    match lexreturn {
-                        Some(l) => {
-                            let arity = l.get_arity();
-                            let mut w = Word::make_word(
-                                "lambda".to_string(),
-                                arity,
-                                action_substitution,
-                                Some(l.clone()),
-                            );
-                            w.setup_expectations();
-                            cstack.pushWordCall(&mut w);
-                            //istack.append(l);
-                        }
-                        _ => {}
-                    }
-                }
-                LexItem::Stack(mut s) => {
-                    if let Some(l) = cstack.pushLexItem(&mut LexItem::Stack(s)) {
-                        //println!("output item: {}", format_lexstack(&s));
-                        ostack.push(l.clone());
-                    }
-                }
-                LexItem::Parameter(p) => {
-                    let c = cstack.stack.last_mut();
-                    if let Some(top_call) = c {
-                        match action_parameter(top_call) {
-                            Some(lexeme) => {
-                                istack.push(lexeme);
-                            }
-                            None => (),
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
     }
-    println!("cstack: {:?}", cstack.stack);
-    return ostack;
+    return lexstack;
 }
 fn main() {
     let mut reader = Editor::<()>::new();
@@ -988,21 +986,43 @@ fn main() {
         println!("No previous history.");
     }
     // Program p;
+    let mut cstack = CallStack {
+        stack: Vec::new(),
+        words: HashMap::new(),
+    };
+    cstack.create_builtin_words();
+
+    let ostack: Vec<LexItem> = Vec::new();
+    let istack: Vec<LexItem> = Vec::new();
+    let mut program = Program {
+        name: "REPL".to_string(),
+        cstack: cstack,
+        istack: istack,
+        ostack: ostack,
+        filename: "".to_string(),
+    };
+
     loop {
         let readline = reader.readline("STAPLr> ");
+
         //let args: Vec<_> = env::args().collect();
-        let ostack: &mut Vec<LexItem> = &mut Vec::new();
+
         match readline {
             Ok(line) => {
+                let mut lexstack = &mut Vec::new();
                 reader.add_history_entry(line.as_ref());
-                eval(line.to_string(), ostack);
+                parse_input(line.to_string(), &mut lexstack);
+                program.istack = parse_stacks(lexstack, &mut program.istack).to_owned();
+                eval(&mut program);
+                //program.istack.clear();
                 println!("input was: {}", line.to_string());
+                println!("ostack: {}", format_lexstack(&program.ostack));
+                program.ostack.clear();
             }
             _ => {
                 break;
             }
         }
-        println!("ostack: {}", format_lexstack(ostack));
     }
     reader.save_history("staplr_history.txt").unwrap();
     // println!("Hello, world! {}", match words.stack.get("define") { Some(fun) => fun, None=> "none" });
