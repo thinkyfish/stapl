@@ -189,6 +189,7 @@ fn next_lexeme<T: Iterator<Item = char>>(mut it: &mut Peekable<T>) -> Option<Lex
             let a = lex_word(c, &mut it);
             return Some(LexItem::Word(a));
         }
+
         '$' => {
             it.next();
             let p = lex_parameter(c, &mut it);
@@ -281,6 +282,9 @@ fn print_lexeme(token: &LexItem) -> String {
         }
         LexItem::Num(n) => {
             value = n.to_string();
+        }
+        LexItem::Literal(l) => {
+            value = l.to_string();
         }
         LexItem::OpenParen => {
             value = "[".to_string();
@@ -496,6 +500,15 @@ impl CallStack {
             expectations: vec![Expectation::Num],
         };
         self.words.insert("take".to_string(), deftake);
+
+        let defprint = Word {
+            name: "print".to_string(),
+            arity: 1,
+            action: action_print,
+            substitution: None,
+            expectations: vec![Expectation::NumStaLit],
+        };
+        self.words.insert("print".to_string(), defprint);
     }
 
     fn pushLexItem<'l>(self: &mut Self, lexeme: &'l mut LexItem) -> Option<&'l mut LexItem> {
@@ -684,6 +697,10 @@ impl Word {
 fn action_none(call: &mut Call) -> () {
     return ();
 }
+fn action_print(call: &mut Call) -> () {
+    let item = call.arguments.pop().unwrap().value;
+    println!("printing:{}", print_lexeme(&item));
+}
 fn action_take(call: &mut Call) -> () {
     let mut newstack = Vec::new();
     for a in 0..call.arguments.len() {
@@ -841,6 +858,14 @@ fn make_call(word: &Word) -> Call {
 
     return a;
 }
+
+struct Program {
+    name: String,
+    filename: String,
+    istack: Vec<LexItem>,
+    cstack: CallStack,
+}
+
 fn eval<'o>(input: String, ostack: &'o mut Vec<LexItem>) -> &'o mut Vec<LexItem> {
     let cstack = &mut CallStack {
         stack: Vec::new(),
@@ -962,7 +987,7 @@ fn main() {
     if let Err(_) = reader.load_history("staplr_history.txt") {
         println!("No previous history.");
     }
-
+    // Program p;
     loop {
         let readline = reader.readline("STAPLr> ");
         //let args: Vec<_> = env::args().collect();
